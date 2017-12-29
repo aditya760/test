@@ -1,0 +1,226 @@
+---
+jobs:
+  - name: cli-unit
+    plan:
+      - get: codeblue-cli
+        trigger: true
+      - task: cli-unit
+        file: codeblue-cli/ci/tasks/cli-unit.yml
+
+  - name: backend-unit
+    plan:
+      - get: codeblue-backend
+        trigger: true
+      - task: backend-unit
+        file: codeblue-backend/ci/tasks/backend-unit.yml
+
+  - name: dashboard-worker-unit
+    plan:
+      - get: codeblue-dashboard-worker
+        trigger: true
+      - task: dashboard-worker-unit
+        file: codeblue-dashboard-worker/ci/tasks/dashboard-unit.yml
+
+  - name: dashboard-worker-integration
+    plan:
+      - aggregate:
+        - get: codeblue-dashboard-worker
+          passed: [dashboard-worker-unit]
+          trigger: true
+      - task: dashboard-worker-integration
+        file: codeblue-dashboard-worker/ci/tasks/dashboard-integration.yml
+        params:
+          INFLUX_HOST: ((influx_host))
+          INFLUX_DB: ((influx_integration_db))
+          INFLUX_PORT: ((influx_port))
+          GIT_USERNAME: ((git_username))
+          GIT_PASSWORD: ((git_password))
+          PIVOTAL_TRACKER_TOKEN: ((pivotal_tracker_token))
+
+  - name: push-to-test-env
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [cli-unit]
+          trigger: true
+        - get: codeblue-backend
+          passed: [backend-unit]
+          trigger: true
+      - task: push-to-test-env
+        file: codeblue-cli/ci/tasks/push-test.yml
+        params:
+          CF_API: ((cf_test_api))
+          CF_USERNAME: ((cf_test_username))
+          CF_PASSWORD: ((cf_test_password))
+          CF_ORG: ((cf_test_org))
+          CF_SPACE: ((cf_test_space))
+
+  - name: push-gui-to-test-env
+    plan:
+      - get: codeblue-gui
+        trigger: true
+      - task: push-to-test-env
+        file: codeblue-gui/ci/tasks/push-test.yml
+        params:
+          CF_API: ((cf_test_api))
+          CF_USERNAME: ((cf_test_username))
+          CF_PASSWORD: ((cf_test_password))
+          CF_ORG: ((cf_test_org))
+          CF_SPACE: ((cf_test_space))
+
+  - name: nodejs-acceptance-test
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [push-to-test-env]
+          trigger: true
+        - get: codeblue-backend
+          passed: [push-to-test-env]
+          trigger: true
+      - task: acceptance-test
+        file: codeblue-cli/ci/tasks/acceptance-test.yml
+        params:
+          TEST_BACKEND_URL: ((cf_test_route))
+          CF_API: ((cf_test_api))
+          CF_USERNAME: ((cf_test_username))
+          CF_PASSWORD: ((cf_test_password))
+          CF_ORG: ((cf_test_org))
+          CF_SPACE: ((cf_test_space))
+          CF_TEST_ROUTE: ((generated_app_route))
+
+  - name: java-acceptance-test
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [push-to-test-env]
+          trigger: true
+        - get: codeblue-backend
+          passed: [push-to-test-env]
+          trigger: true
+      - task: acceptance-test
+        file: codeblue-cli/ci/tasks/java-acceptance.yml
+        params:
+          TEST_BACKEND_URL: ((cf_test_route))
+          CF_API: ((cf_test_api))
+          CF_USERNAME: ((cf_test_username))
+          CF_PASSWORD: ((cf_test_password))
+          CF_ORG: ((cf_test_org))
+          CF_SPACE: ((cf_test_space))
+          CF_TEST_ROUTE: ((generated_app_route))
+
+  - name: push-to-production
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [nodejs-acceptance-test, java-acceptance-test]
+          trigger: true
+        - get: codeblue-backend
+          passed: [nodejs-acceptance-test, java-acceptance-test]
+          trigger: true
+      - task: push-to-production
+        file: codeblue-cli/ci/tasks/push-production.yml
+        params:
+          CF_API: ((cf_prod_api))
+          CF_USERNAME: ((cf_prod_username))
+          CF_PASSWORD: ((cf_prod_password))
+          CF_ORG: ((cf_prod_org))
+          CF_SPACE: ((cf_prod_space))
+
+  - name: upload-cli
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [nodejs-acceptance-test, java-acceptance-test]
+          trigger: true
+        - get: version-semver
+          params: {bump: patch}
+      - task: upload-cli
+        file: codeblue-cli/ci/tasks/upload-cli.yml
+        params:
+          GCS_KEY: ((gcs_key))
+
+  - name: bump-build
+    public: true
+    serial: true
+    plan:
+      - aggregate:
+        - get: codeblue-cli
+          passed: [nodejs-acceptance-test, java-acceptance-test]
+          trigger: true
+        - get: codeblue-backend
+          passed: [nodejs-acceptance-test, java-acceptance-test]
+          trigger: true
+        - get: codeblue-gui
+          passed: [push-gui-to-test-env]
+          trigger: true
+        - get: codeblue-dashboard-worker
+          passed: [dashboard-worker-integration]
+          trigger: true
+      - get: version-semver
+        params: {bump: patch}
+      - put: version-semver
+        params:
+          file: version-semver/version
+      - put: codeblue-cli
+        params:
+          repository: codeblue-cli
+          tag: version-semver/version
+      - put: codeblue-backend
+        params:
+          repository: codeblue-backend
+          tag: version-semver/version
+      - put: codeblue-gui
+        params:
+          repository: codeblue-gui
+          tag: version-semver/version
+      - put: codeblue-dashboard-worker
+        params:
+          repository: codeblue-dashboard-worker
+          tag: version-semver/version
+
+resources:
+  - name: codeblue-cli
+    type: git
+    source:
+      uri: git@github.com:TheCognizantFoundry/codeblue.git
+      branch: master
+      private_key: {{codeblue_cli_github_key}}
+
+  - name: codeblue-backend
+    type: git
+    source:
+      uri: git@github.com:TheCognizantFoundry/codeblue-backend.git
+      branch: master
+      private_key: {{codeblue_backend_github_key}}
+
+  - name: codeblue-gui
+    type: git
+    source:
+      uri: git@github.com:TheCognizantFoundry/codeblue-gui.git
+      branch: master
+      private_key: {{codeblue_gui_github_key}}
+
+  - name: codeblue-dashboard-worker
+    type: git
+    source:
+      uri: git@github.com:TheCognizantFoundry/codeblue-dashboard-worker.git
+      branch: master
+      private_key: {{codeblue_dashboard_worker_github_key}}
+
+
+  - name: version-semver
+    type: semver
+    source:
+      initial_version: 0.0.1
+      driver: git
+      uri: git@github.com:TheCognizantFoundry/codeblue.git
+      branch: version
+      file: version
+      private_key: {{codeblue_cli_github_key}}
+
+resource_types:
+  - name: github-status
+    type: docker-image
+    source:
+      repository: dpb587/github-status-resource
+      tag: master

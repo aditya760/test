@@ -1,0 +1,17 @@
+package: cognizant.com/codeblue
+import:
+- package: github.com/mitchellh/go-homedir
+- package: github.com/spf13/cobra
+- package: github.com/spf13/viper
+  version: ~1.0.0
+- package: github.com/onsi/ginkgo
+  version: ~1.4.0
+  subpackages:
+  - ginkgo
+- package: github.com/onsi/gomega
+  version: ~1.2.0
+- package: github.com/op/go-logging
+  version: ^1.0.0
+- package: github.com/mattn/go-shellwords
+  version: ^1.0.3
+- package: github.com/wsxiaoys/terminal

@@ -1,0 +1,22 @@
+resources:
+- name: autopcftest
+  type: git
+  source:
+    uri: https://github.com/TheCognizantFoundry/TheCodeBlue.git
+    branch: master
+    username: {Username}
+    password: {Password}
+jobs:
+  - name: get-source
+    public: true
+    plan:
+    - get: autopcftest
+      trigger: true
+
+  - name: job-unit-tests
+    plan:
+    - get: autopcftest
+      passed: [get-source]
+      trigger: true
+    - task: task-unit-tests
+      file: autopcftest/ci/tasks/unit-test.yml

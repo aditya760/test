@@ -1,0 +1,24 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source:
+    repository: cdeprod/concourse
+    tag: 'latest'
+
+params:
+  CF_API:         replace-me
+  CF_USERNAME:    replace-me
+  CF_PASSWORD:    replace-me
+  CF_ORG:         replace-me
+  CF_SPACE:       replace-me
+
+inputs:
+- name: codeblue-cli
+  path: codeblue
+- name: codeblue-backend
+  path: codeblue-backend
+
+run:
+  path: codeblue/ci/tasks/push-production.sh
